@@ -1,29 +1,46 @@
-package consumer
+package main
 
 import (
 	"fmt"
-	"mini-kafka/broker"
+	"log"
+	"os"
+
+	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 )
 
-type Consumer struct {
-	topic string
-	ch    <-chan string
+type consumer struct {
+	name, url, topic string
 }
 
-func New(b *broker.Broker, topic string) *Consumer {
-	// NOTE: Consumer does not need to keep a reference to the broker
-	ch := b.Subscribe(topic) // channel is returned when subscribing
-	return &Consumer{
-		topic: topic,
-		ch:    ch, // keep the channel
+func main() {
+	if len(os.Args) != 2 {
+		fmt.Println("Usage: go run consumer.go <topic>")
+		os.Exit(1)
 	}
-}
+	topic := os.Args[1]
+	uid := uuid.New()
+	sub := &consumer{
+		name:  uid.String(),
+		url:   "ws://localhost:9092",
+		topic: topic,
+	}
 
-func (c *Consumer) Listen(name string) {
-	// Starting a goroutine to listen for messages
-	go func() {
-		for msg := range c.ch {
-			fmt.Printf("[%s] received on topic '%s': %s\n", name, c.topic, msg)
+	url := fmt.Sprintf("%s/ws?name=%s&topic=%s", sub.url, sub.name, sub.topic)
+	log.Printf("connecting to %s", url)
+
+	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+	if err != nil {
+		log.Fatal("dial error:", err)
+	}
+	defer conn.Close()
+
+	for {
+		_, message, err := conn.ReadMessage()
+		if err != nil {
+			log.Println("read error:", err)
+			return
 		}
-	}()
+		log.Printf("received: %s", message)
+	}
 }
